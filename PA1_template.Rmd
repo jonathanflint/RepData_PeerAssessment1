@@ -6,20 +6,108 @@ output:
 ---
 
 
+
+
+This is an analysis of the steps data set from https://github.com/rdpeng/RepData_PeerAssessment1, examining patterns with regard to the number of steps taken and plotting some of these.
+
+
 ## Loading and preprocessing the data
+
+The data is provided in csv format, which can easily be loaded into R. It is then converted into a data.table for easier manipulation.
+```{r,echo=TRUE}
+library(data.table)
+library(ggplot2)
+
+steps.data <- read.csv("activity.csv")
+steps.data <- data.table(steps.data)
+```
 
 
 
 ## What is mean total number of steps taken per day?
+
+Converting the data format into a new data table which has the number of steps in each day.
+```{r echo=TRUE}
+steps.per.day <- steps.data[,list(steps=sum(steps)),by="date"]
+steps.per.day[,date:=ymd(date)]
+print(summary(steps.per.day$steps))
+hist <- ggplot(steps.per.day) + geom_histogram(aes(x=steps)) + ggtitle("Histogram of steps taken per day")
+```
+The mean number of steps per day is `r mean(steps.per.day$steps,na.rm=TRUE)`, rounded to `r round(mean(steps.per.day$steps,na.rm=TRUE))`, not counting days with NAs for the whole set.  
+The median number of steps per day is `r median(steps.per.day$steps,na.rm=TRUE)`, rounded to `r round(median(steps.per.day$steps,na.rm=TRUE))`, not counting days with NAs for the whole set.  
+
 
 
 
 ## What is the average daily activity pattern?
 
 
+Converting the data format again, this time to produce the mean of each time slot across all days. The mean is taken ignoring the NA values.
+
+
+```{r echo=TRUE, fig.width=7, fig.height=6}
+steps.per.5min <- steps.data[,list(steps=mean(steps,na.rm=TRUE)),by="interval"]
+ggplot(steps.per.5min) + geom_line(aes(x=interval,y=steps))
+
+subset(steps.per.5min, steps==max(steps.per.5min$steps))
+```
+The 5 minute interval with the most steps on average per day is 8:35, which has an average of a little over 206 steps.  
+
+
 
 ## Imputing missing values
+
+In this case, for each 5 minute interval, all NA values are replaced by the mean of the non-NA values for that interval. This is intended to preserve intraday patterns, though it is at the expense of daily patterns. The values are rounded to the nearest integer.  
+
+
+```{r echo=TRUE, fig.width=7, fig.height=6}
+steps.data.clean <- copy(steps.data)
+for(this.interval in unique(steps.data.clean$interval)){
+  interval.mean <- mean(subset(steps.data.clean, interval == this.interval)$steps,na.rm=TRUE)
+  steps.data.clean[interval==this.interval & is.na(steps),steps:=round(interval.mean)]
+}
+
+```
+The resultant histogram is as shown:
+
+```{r echo=TRUE, fig.width=7, fig.height=6}
+steps.per.day <- steps.data.clean[,list(steps=sum(steps)),by="date"]
+steps.per.day[,date:=ymd(date)]
+print(summary(steps.per.day$steps))
+clean.hist <- ggplot(steps.per.day) + geom_histogram(aes(x=steps)) + ggtitle("Histogram of steps taken per day")
+mean.per.day <- mean(steps.per.day$steps)
+median.per.day <- median(steps.per.day$steps)
+```
+
+This has a slight movement up in scale compared to the previous run. It also makes the number of steps per day somewhat more homogenous.  
+The mean number of steps per day is `r mean.per.day` and the median number of steps per day is `r median.per.day` - both have dropped by a few steps per day only.  
+Thus the effect is not really to change the mean and median, but rather to tighten up the variance in the dates.  
+
 
 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+
+Creating a new column, "Week.part"
+If a given interval is on Saturday or Sunday, make it have "weekend", else make it have "weekday." (Do this by creating it with value weekday and then converting to weekend)  
+Then convert to factor.
+
+
+```{r echo=TRUE}
+
+steps.data.clean[,Week.part:="weekday"]
+steps.data.clean[weekdays(ymd(date)) %in% c("Saturday","Sunday"),Week.part:="weekend"]
+steps.data.clean$Week.part <- as.factor(steps.data.clean$Week.part)
+steps.data.5min.segregated <- steps.data.clean[,list(steps=mean(steps,na.rm=TRUE)),by=c("interval","Week.part")]
+
+ggplot(steps.data.5min.segregated) + geom_line(aes(x=interval,y=steps,colour=Week.part)) + ggtitle("Steps per 5 minute interval, segregated by weekday versus weekend")
+
+```
+  
+The overall result here is that activity starts later on the weekend, and peaks lower but is more consistent. Note that both sets have missing values filled in as the average of the whole-week value for that interval, so without the filled in missing data it may be even clearer.
+
+
+
+
+
